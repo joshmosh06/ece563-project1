@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.13)
+project(ece563-project1)
+
+add_library(src ../sim_pipe.h ../sim_pipe.cc ../sim_pipe_fp.cc ../sim_pipe_fp.h ../sp_register.h ../sp_register.cpp)
+
+add_subdirectory(testcases)
+add_subdirectory(asm)
