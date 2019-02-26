@@ -278,8 +278,6 @@ inline string getOpcodeString(opcode_t op) {
             return "EOP";
         case NOP:
             return "NOP";
-		default:
-			return "";
     }
 }
 /* body of the simulator */
@@ -315,6 +313,7 @@ void sim_pipe::run(unsigned cycles){
         clock_cycles_executed += 1;
         if(!running && cycles >0){cycles--;}
         //advance pipeline if no stalls are encountered
+
     }
 }
 
@@ -358,6 +357,7 @@ void sim_pipe::fetch() {
 		printf("Stall Inserted at IF on CONTROL HAZARD \n");
 #endif
 		//make sure the Branch IR is in the pipeline if it is not do not stall yet
+		instruction_t* isr = sp_registers->get_ir_registers();
 			stall_inserted = true;
 			instruction_t stall_ir;
 			stall_ir.opcode = NOP;
@@ -458,8 +458,7 @@ void sim_pipe::decode(){
 			b = get_gp_register(ir.src1);
 			imm= ir.immediate;
 			break;
-		default:
-			break;
+
 	}
 	//set all SP registers to UNDEFINED
 	int npc = get_sp_register(NPC,ID);
@@ -558,8 +557,6 @@ void sim_pipe::execute(){
             break;
         case NOP:
             break;
-		default:
-			break;
     }
 
     sp_registers->set_ir_register(ir,MEM);
@@ -604,17 +601,15 @@ void sim_pipe::memory(){
     //set aluoutput for wb stage
     sp_registers->set_sp_register(ALU_OUTPUT,WB,aluoutput);
     sp_registers->set_sp_register(COND,WB,cond);
-	unsigned lmd = load_memory(aluoutput);
 
     switch(ir.opcode){
             case SW:
                 write_memory(aluoutput,b);
                 break;
             case LW:
+                unsigned lmd = load_memory(aluoutput);
                 sp_registers->set_sp_register(LMD,WB,lmd);
                 break;
-		default:
-			break;
     }
         sp_registers->set_ir_register(ir,WB);
 }
@@ -690,6 +685,8 @@ unsigned sim_pipe::get_sp_register(sp_register_t reg, stage_t s){
 	return sp_registers->get_sp_register(reg,s);
 }
 
+
+
 //returns value of general purpose register
 int sim_pipe::get_gp_register(unsigned reg){
 	return registerFile[reg];
@@ -716,14 +713,12 @@ unsigned sim_pipe::get_stalls(){
 unsigned sim_pipe::get_clock_cycles(){
         return clock_cycles_executed; //please modify
 }
-//loads register from memory at specified address
+
 unsigned sim_pipe::load_memory(unsigned address) {
     unsigned a;
     memcpy(&a, data_memory+address, sizeof a);
     return a;
 }
-//checks the state of the pipeline at various stages to determine if there are hazards
-//present in the pipeline that require stalls to be solved
 void sim_pipe::check_stall(stage_t s, instruction_t ir) {
     instruction_t irEXE = sp_registers->get_ir_register(EXE);
     instruction_t irMEM = sp_registers->get_ir_register(MEM);
@@ -801,7 +796,7 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 			break;
 	}
 }
-//determines if a stage is causing a stall
+
 bool sim_pipe::isStall(stage_t s) {
 	if(stall[s].in_stall){
 		return true;
