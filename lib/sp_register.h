@@ -29,6 +29,7 @@ typedef struct{
     string label; //for conditional branches, label of the target instruction - used only for parsing/debugging purposes
 } instruction_t;
 typedef enum {RAW,WAR,WAW,STRUCTURAL,CONTROL} hazard_type_t;
+
 typedef struct  {
     bool in_stall;
     hazard_type_t hazard_type;

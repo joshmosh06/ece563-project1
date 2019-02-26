@@ -15,7 +15,7 @@ int main(int argc, char **argv){
 	sim_pipe *mips = new sim_pipe(1024*1024, 4);
 
 	//loads program in instruction memory at address 0x10000000
-	mips->load_program("asm/control_dep.asm", 0x10000000);
+	mips->load_program("C:\\Users\\Joshmosh\\OneDrive\\Documents\\Classes\\Senior Second Semester\\ECE 563\\project1_code\\c++\\asm\\control_dep.asm", 0x10000000);
 
 	//initialize general purpose registers
 	for (i=0; i<7; i++) mips->set_gp_register(i,i);

@@ -1,5 +1,5 @@
 #include "sim_pipe.h"
-#include "sp_register.h"
+#include "lib/sp_register.h"
 #include <stdlib.h>
 #include <iostream>
 #include <fstream>
@@ -244,7 +244,7 @@ sim_pipe::~sim_pipe(){
 
    ============================================================= */
 
-inline char* getOpcodeString(opcode_t op) {
+inline string getOpcodeString(opcode_t op) {
     switch(op){
         case LW:
             return "LW";
@@ -278,6 +278,8 @@ inline char* getOpcodeString(opcode_t op) {
             return "EOP";
         case NOP:
             return "NOP";
+		default:
+			return "";
     }
 }
 /* body of the simulator */
@@ -285,12 +287,16 @@ void sim_pipe::run(unsigned cycles){
 	if(cycles == 0){
 		running = true;
 	}
-	printf("IF Stage opcode: %s \n",getOpcodeString(sp_registers->get_ir_register(IF).opcode));
-    printf("ID Stage opcode: %s \n",getOpcodeString(sp_registers->get_ir_register(ID).opcode));
-    printf("EXE Stage opcode: %s \n",getOpcodeString(sp_registers->get_ir_register(EXE).opcode));
-    printf("MEM Stage opcode: %s \n",getOpcodeString(sp_registers->get_ir_register(MEM).opcode));
-    printf("WB Stage opcode: %s \n",getOpcodeString(sp_registers->get_ir_register(WB).opcode));
-    printf("Stalls inserted: %d \n",get_stalls());
+
+#if DEBUG
+        printf("IF Stage opcode: %s \n", getOpcodeString(sp_registers->get_ir_register(IF).opcode).c_str());
+        printf("ID Stage opcode: %s \n", getOpcodeString(sp_registers->get_ir_register(ID).opcode).c_str());
+        printf("EXE Stage opcode: %s \n", getOpcodeString(sp_registers->get_ir_register(EXE).opcode).c_str());
+        printf("MEM Stage opcode: %s \n", getOpcodeString(sp_registers->get_ir_register(MEM).opcode).c_str());
+        printf("WB Stage opcode: %s \n", getOpcodeString(sp_registers->get_ir_register(WB).opcode).c_str());
+        printf("Stalls inserted: %d \n", get_stalls());
+#endif
+
     while(running || cycles != 0) {
         //WB
         writeback();
@@ -302,11 +308,13 @@ void sim_pipe::run(unsigned cycles){
         decode();
         //IF
         fetch();
-
-        clock_cycles_executed += 1 + data_memory_latency;
+		if(stall_inserted) {
+			stall_inserted = false;
+			stalls++;
+		}
+        clock_cycles_executed += 1;
         if(!running && cycles >0){cycles--;}
         //advance pipeline if no stalls are encountered
-		advance_sp_registers();
     }
 }
 
@@ -327,29 +335,45 @@ void sim_pipe::fetch() {
 		return;
 	}
 	instruction_t ir = instr_memory[(current_pc-instr_base_address)/4];
-	if(isStall(ID)){
+	//check for RAW hazards
+	if(isStall(ID) || isStall(EXE)){
+	    //stops instructions from being loaded into the pipeline
+		if (ir.opcode == BLTZ || ir.opcode == BNEZ ||
+		ir.opcode == BGTZ || ir.opcode == BEQZ ||
+		ir.opcode == BGEZ || ir.opcode == BLEZ ||
+		ir.opcode == JUMP
+		) {
+			//ensure a stall is not needed for control hazard as well
+			//check_stall(IF,ir);
+
+		}
 		return;
 	}
 	check_stall(ID,ir);
-
+	//handle control hazards
 	if(isStall(IF)){
 		//ir cannot move to IF due to CONTROL hazard
 		//stall untill ir with hazard is in EXE stage
+#if DEBUG
 		printf("Stall Inserted at IF on CONTROL HAZARD \n");
-		stalls++;
-		instruction_t stall_ir;
-		stall_ir.opcode = NOP;
-		sp_registers->clear_sp_registers(ID);
-		sp_registers->set_ir_register(stall_ir, ID);
-		return;
+#endif
+		//make sure the Branch IR is in the pipeline if it is not do not stall yet
+			stall_inserted = true;
+			instruction_t stall_ir;
+			stall_ir.opcode = NOP;
+			sp_registers->clear_sp_registers(ID);
+			sp_registers->set_ir_register(stall_ir, ID);
+			return;
 	}
 	check_stall(IF,ir);
 
+	//handle EOP opcode during the exiting of the program
 	if(ir.opcode == EOP){
         end = true;
 	    //dont save pc sp registers
         //set all SP registers to UNDEFINED
         sp_registers->clear_sp_registers(ID);
+		sp_registers->set_sp_register(NPC,ID,current_pc);
         //load next Instruction into pipeline
         sp_registers->set_ir_register(ir, ID);
 	    return;
@@ -372,16 +396,23 @@ void sim_pipe::decode(){
 	unsigned b = UNDEFINED;
 	unsigned imm = UNDEFINED;
 
+	//insert a stall if it is needed due to RAW hazard
 	if(isStall(ID)){
 		//ir cannot move to ID due to RAW hazard
 		//stall untill ir with hazard is in WB stage
-		printf("Stall Inserted at ID \n");
-		stalls++;
+        #if DEBUG
+        printf("Stall Inserted at ID \n");
+        #endif
+		stall_inserted = true;
 		instruction_t stall_ir;
 		stall_ir.opcode = NOP;
 		sp_registers->clear_sp_registers(EXE);
 		sp_registers->set_ir_register(stall_ir, EXE);
 		return;
+	}
+
+	if(isStall(EXE)){
+	    return;
 	}
 
 	if(ir.opcode == NOP){
@@ -392,6 +423,7 @@ void sim_pipe::decode(){
 	}
 	if(ir.opcode == EOP){
 	    sp_registers->clear_sp_registers(EXE);
+		sp_registers->set_sp_register(NPC,EXE,sp_registers->get_sp_register(NPC,ID));
 	    sp_registers->set_ir_register(ir,EXE);
 	    return;
 	}
@@ -426,7 +458,8 @@ void sim_pipe::decode(){
 			b = get_gp_register(ir.src1);
 			imm= ir.immediate;
 			break;
-	        
+		default:
+			break;
 	}
 	//set all SP registers to UNDEFINED
 	int npc = get_sp_register(NPC,ID);
@@ -446,6 +479,9 @@ void sim_pipe::execute(){
     //load instruction from pipeline sp registers
     instruction_t ir = sp_registers->get_ir_register(EXE);
     check_stall(EXE,ir);
+    if(isStall(EXE)){
+        return;
+    }
     if(ir.opcode == NOP) {
         //do not do anything during this stage (stall or start of program)
 		sp_registers->clear_sp_registers(MEM);
@@ -459,7 +495,7 @@ void sim_pipe::execute(){
     }
     //load other pipeline registers into temps
     int npc = sp_registers->get_sp_register(NPC,EXE);
-    unsigned a = sp_registers->get_sp_register(A,EXE);
+    int a = (int)sp_registers->get_sp_register(A,EXE);
     unsigned b = sp_registers->get_sp_register(B,EXE);
     unsigned imm = sp_registers->get_sp_register(IMM,EXE);
 
@@ -522,6 +558,8 @@ void sim_pipe::execute(){
             break;
         case NOP:
             break;
+		default:
+			break;
     }
 
     sp_registers->set_ir_register(ir,MEM);
@@ -530,7 +568,20 @@ void sim_pipe::execute(){
 void sim_pipe::memory(){
     //load instruction from pipeline sp registers
     instruction_t ir = sp_registers->get_ir_register(MEM);
-	check_stall(MEM,ir);
+    check_stall(MEM,ir);
+    if(isStall(MEM)){
+        //ir cannot move to ID due to RAW hazard
+        //stall untill ir with hazard is in WB stage
+        #if DEBUG
+        printf("Stall Inserted at MEM \n");
+        #endif
+		stall_inserted = true;
+        instruction_t stall_ir;
+        stall_ir.opcode = NOP;
+        sp_registers->clear_sp_registers(WB);
+        sp_registers->set_ir_register(stall_ir, WB);
+        return;
+    }
     if(ir.opcode == NOP){
         //do not do anything during this stage (stall or start of program)
 		sp_registers->clear_sp_registers(WB);
@@ -553,19 +604,19 @@ void sim_pipe::memory(){
     //set aluoutput for wb stage
     sp_registers->set_sp_register(ALU_OUTPUT,WB,aluoutput);
     sp_registers->set_sp_register(COND,WB,cond);
-
+	unsigned lmd = load_memory(aluoutput);
 
     switch(ir.opcode){
-        case SW:
-            write_memory(aluoutput,b);
-            break;
-        case LW:
-            unsigned lmd = load_memory(aluoutput);
-            sp_registers->set_sp_register(LMD,WB,lmd);
-            break;
+            case SW:
+                write_memory(aluoutput,b);
+                break;
+            case LW:
+                sp_registers->set_sp_register(LMD,WB,lmd);
+                break;
+		default:
+			break;
     }
-
-    sp_registers->set_ir_register(ir,WB);
+        sp_registers->set_ir_register(ir,WB);
 }
 void sim_pipe::writeback(){
     //load instruction from pipeline sp registers
@@ -612,7 +663,7 @@ void sim_pipe::reset(){
 	registerFile = new unsigned[NUM_GP_REGISTERS];
 	//clear gp registers
 	for (int j = 0; j < NUM_GP_REGISTERS; ++j) {
-		registerFile[j] =j;
+		registerFile[j] =UNDEFINED;
 	}
 	clock_cycles_executed = -1;
 	instructions_executed = 0;
@@ -627,16 +678,16 @@ void sim_pipe::reset(){
 	for (int k = 0; k < NUM_STAGES; ++k) {
 		stall[k].in_stall = false;
 	}
+	//clear latency array
+    memset(latency, 0, sizeof(int));
+	stall_inserted = false;
+
 }
 
 
 //return value of special purpose register
 unsigned sim_pipe::get_sp_register(sp_register_t reg, stage_t s){
 	return sp_registers->get_sp_register(reg,s);
-}
-
-void sim_pipe::advance_sp_registers(){
-
 }
 
 //returns value of general purpose register
@@ -647,10 +698,7 @@ int sim_pipe::get_gp_register(unsigned reg){
 void sim_pipe::set_gp_register(unsigned reg, int value){
     if(reg < NUM_GP_REGISTERS) {
 		registerFile[reg] = value;
-    } else {
-		printf("ERROR: Simulator attempted to set reg %d with value %d",reg,value);
     }
-
 }
 
 float sim_pipe::get_IPC(){
@@ -668,12 +716,14 @@ unsigned sim_pipe::get_stalls(){
 unsigned sim_pipe::get_clock_cycles(){
         return clock_cycles_executed; //please modify
 }
-
+//loads register from memory at specified address
 unsigned sim_pipe::load_memory(unsigned address) {
     unsigned a;
     memcpy(&a, data_memory+address, sizeof a);
     return a;
 }
+//checks the state of the pipeline at various stages to determine if there are hazards
+//present in the pipeline that require stalls to be solved
 void sim_pipe::check_stall(stage_t s, instruction_t ir) {
     instruction_t irEXE = sp_registers->get_ir_register(EXE);
     instruction_t irMEM = sp_registers->get_ir_register(MEM);
@@ -692,32 +742,55 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 			break;
 		case ID:
             for (int j = 0; j < 3; ++j) {
-                if ((irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP && ir.dest != UNDEFINED)) {
+                if ((irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP  && ir.dest != UNDEFINED)) {
                     stall[ID].in_stall = true;
                     stall[ID].hazard_type = WAR;
                     stall[ID].reg = irs[j].dest;
                 }
             }
 			break;
+	    case EXE:
+	        //check to make sure the MEM stage is avaliable otherwise stall
+	        //this only happens during an SW or LW operation
+	        if(irMEM.opcode == LW || irMEM.opcode ==SW){
+	            stall[EXE].in_stall = true;
+	            stall[EXE].hazard_type = STRUCTURAL;
+	            stall[EXE].reg = UNDEFINED;
+	        }
+            if(latency[MEM] == 0){
+                //Memory is done, remove sturctural hazard
+                stall[EXE].in_stall = false;
+                stall[MEM].in_stall = false;
+            }
+	        break;
 		case MEM:
 			if(ir.opcode == BEQZ || ir.opcode == BNEZ || ir.opcode == BLTZ|| ir.opcode == BGTZ || ir.opcode == BLEZ ||ir.opcode == BGEZ || ir.opcode == JUMP) {
 				stall[IF].in_stall = false;
 				stall[IF].reg = UNDEFINED;
 				//NPC is known
 			}
+			if((ir.opcode == LW || ir.opcode ==SW) && (!isStall(EXE))){
+			    //LW or SW is just starting set total time exe needs to execute for
+			    latency[MEM] = data_memory_latency;
+			    stall[MEM].in_stall = true;
+			} else if (ir.opcode == LW || ir.opcode ==SW) {
+			    latency[MEM]--;
+			}
+            if(latency[MEM] == 0){
+                //Memory is done, remove sturctural hazard
+                stall[EXE].in_stall = false;
+                stall[MEM].in_stall = false;
+            }
 			break;
 		case WB:
-		    bool setFalse = false;
-			for (int i = 0; i <NUM_STAGES ; ++i) {
-					if(stall[i].reg == ir.dest && stall[i].in_stall){
+		    for (int i = 0; i <NUM_STAGES ; ++i) {
+					if(stall[i].reg == ir.dest && stall[i].in_stall && stall[i].hazard_type !=CONTROL){
 						// stall no longer needs to be stalled as WB has written value
 						stall[i].in_stall = false;
 						stall[i].reg = UNDEFINED;
-						setFalse = true;
 					}
 			}
-
-                //make sure there are no other instructions that need to be stalled
+		    //make sure there are no other instructions that need to be stalled
 			for (int j = 0; j < 2; ++j) {
 				if ( (irs[j].dest == ir.dest)&&(irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP && ir.dest != UNDEFINED)) {
 					stall[ID].in_stall = true;
@@ -725,12 +798,10 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 					stall[ID].reg = irs[j].dest;
 				}
 			}
-
 			break;
-
 	}
 }
-
+//determines if a stage is causing a stall
 bool sim_pipe::isStall(stage_t s) {
 	if(stall[s].in_stall){
 		return true;

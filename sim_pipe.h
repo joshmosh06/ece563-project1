@@ -3,15 +3,15 @@
 
 #include <stdio.h>
 #include <string>
-#include "sp_register.h"
+#include "lib/sp_register.h"
 
 using namespace std;
 
 #define PROGRAM_SIZE 50
-
+#define DEBUG   0
 #define UNDEFINED 0xFFFFFFFF //used to initialize the registers
 #define NUM_SP_REGISTERS 9
-#define NUM_GP_REGISTERS 10
+#define NUM_GP_REGISTERS 32
 #define NUM_OPCODES 16 
 #define NUM_STAGES 5
 
@@ -25,6 +25,9 @@ class sim_pipe{
         sp_register *sp_registers;
 		//object containing all info on stalls
 		stall_t stall[NUM_STAGES];
+		//Current Amount of clockcycles each stage has left to execute before completing
+		int latency[NUM_STAGES];
+		bool stall_inserted;
 		//number of cycles ran
 		int clock_cycles_executed;
 		//number of instructions executed
@@ -120,8 +123,6 @@ public:
 	void print_registers();
 
 	//ADDED functions
-	//moves sp registers from sp after buffers to sp registers
-	void advance_sp_registers();
 	//Pipeline Functions
 	void fetch();
 	void decode();
