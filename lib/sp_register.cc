@@ -41,6 +41,10 @@ void sp_register::reset(){
     //configure all IR registers to execute NOP (IF will obviously not execute NOP right away however)
     for (int k = 0; k < NUM_STAGES; ++k) {
         instr_register[k].opcode = NOP;
+        instr_register[k].src1 = UNDEFINED;
+        instr_register[k].src2 = UNDEFINED;
+        instr_register[k].dest = UNDEFINED;
+        instr_register[k].immediate = UNDEFINED;
     }
 }
 

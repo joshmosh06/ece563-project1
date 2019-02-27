@@ -8,7 +8,7 @@
 using namespace std;
 
 #define PROGRAM_SIZE 50
-#define DEBUG   0
+#define DEBUG   1
 #define UNDEFINED 0xFFFFFFFF //used to initialize the registers
 #define NUM_SP_REGISTERS 9
 #define NUM_GP_REGISTERS 32

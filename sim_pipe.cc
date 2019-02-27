@@ -280,6 +280,10 @@ inline string getOpcodeString(opcode_t op) {
             return "NOP";
     }
 }
+inline void branchTaken(sp_register* sp_registers){
+    //branch taken
+    sp_registers->set_sp_register(COND,MEM,1);
+}
 /* body of the simulator */
 void sim_pipe::run(unsigned cycles){
 	if(cycles == 0){
@@ -361,6 +365,10 @@ void sim_pipe::fetch() {
 			stall_inserted = true;
 			instruction_t stall_ir;
 			stall_ir.opcode = NOP;
+            stall_ir.src1 = UNDEFINED;
+            stall_ir.src2 = UNDEFINED;
+            stall_ir.dest = UNDEFINED;
+            stall_ir.immediate = UNDEFINED;
 			sp_registers->clear_sp_registers(ID);
 			sp_registers->set_ir_register(stall_ir, ID);
 			return;
@@ -406,6 +414,10 @@ void sim_pipe::decode(){
 		stall_inserted = true;
 		instruction_t stall_ir;
 		stall_ir.opcode = NOP;
+        stall_ir.src1 = UNDEFINED;
+        stall_ir.src2 = UNDEFINED;
+        stall_ir.dest = UNDEFINED;
+        stall_ir.immediate = UNDEFINED;
 		sp_registers->clear_sp_registers(EXE);
 		sp_registers->set_ir_register(stall_ir, EXE);
 		return;
@@ -470,10 +482,7 @@ void sim_pipe::decode(){
 	sp_registers->set_sp_register(IMM,EXE,imm);
 	sp_registers->set_ir_register(ir,EXE);
 }
-inline void branchTaken(sp_register* sp_registers){
-    //branch taken
-    sp_registers->set_sp_register(COND,MEM,1);
-}
+
 void sim_pipe::execute(){
     //load instruction from pipeline sp registers
     instruction_t ir = sp_registers->get_ir_register(EXE);
@@ -575,6 +584,10 @@ void sim_pipe::memory(){
 		stall_inserted = true;
         instruction_t stall_ir;
         stall_ir.opcode = NOP;
+        stall_ir.src1 = UNDEFINED;
+        stall_ir.src2 = UNDEFINED;
+        stall_ir.dest = UNDEFINED;
+        stall_ir.immediate = UNDEFINED;
         sp_registers->clear_sp_registers(WB);
         sp_registers->set_ir_register(stall_ir, WB);
         return;
@@ -613,6 +626,7 @@ void sim_pipe::memory(){
     }
         sp_registers->set_ir_register(ir,WB);
 }
+
 void sim_pipe::writeback(){
     //load instruction from pipeline sp registers
     instruction_t ir = sp_registers->get_ir_register(WB);
@@ -650,6 +664,7 @@ void sim_pipe::writeback(){
     check_stall(WB,ir);
     instructions_executed++;
 }
+
 /* reset the state of the pipeline simulator */
 void sim_pipe::reset(){
     sp_registers = new sp_register();
@@ -660,6 +675,14 @@ void sim_pipe::reset(){
 	for (int j = 0; j < NUM_GP_REGISTERS; ++j) {
 		registerFile[j] =UNDEFINED;
 	}
+	//clear instruction memory
+    for (int l = 0; l < PROGRAM_SIZE; ++l) {
+        instr_memory[l].opcode = EOP;
+        instr_memory[l].src1 = UNDEFINED;
+        instr_memory[l].src2 = UNDEFINED;
+        instr_memory[l].dest = UNDEFINED;
+        instr_memory[l].immediate = UNDEFINED;
+    }
 	clock_cycles_executed = -1;
 	instructions_executed = 0;
 	stalls = 0;
@@ -719,6 +742,8 @@ unsigned sim_pipe::load_memory(unsigned address) {
     memcpy(&a, data_memory+address, sizeof a);
     return a;
 }
+//uses state of pipeline to determine if any control, data, or structual hazards exist
+//
 void sim_pipe::check_stall(stage_t s, instruction_t ir) {
     instruction_t irEXE = sp_registers->get_ir_register(EXE);
     instruction_t irMEM = sp_registers->get_ir_register(MEM);
@@ -737,7 +762,7 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 			break;
 		case ID:
             for (int j = 0; j < 3; ++j) {
-                if ((irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP  && ir.dest != UNDEFINED)) {
+                if ((irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP  && irs[j].dest != UNDEFINED)) {
                     stall[ID].in_stall = true;
                     stall[ID].hazard_type = WAR;
                     stall[ID].reg = irs[j].dest;
@@ -787,7 +812,7 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 			}
 		    //make sure there are no other instructions that need to be stalled
 			for (int j = 0; j < 2; ++j) {
-				if ( (irs[j].dest == ir.dest)&&(irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP && ir.dest != UNDEFINED)) {
+				if ( (irs[j].dest == ir.dest)&&(irs[j].dest == ir.src1 || irs[j].dest == ir.src2) && (irs[j].opcode != NOP  &&irs[j].opcode != EOP &&ir.opcode != NOP && ir.opcode != EOP && irs[j].dest != UNDEFINED)) {
 					stall[ID].in_stall = true;
 					stall[ID].hazard_type = WAR;
 					stall[ID].reg = irs[j].dest;
@@ -798,8 +823,5 @@ void sim_pipe::check_stall(stage_t s, instruction_t ir) {
 }
 
 bool sim_pipe::isStall(stage_t s) {
-	if(stall[s].in_stall){
-		return true;
-	}
-	return false;
+	return stall[s].in_stall;
 }
