@@ -6,7 +6,7 @@ CFLAGS = $(OPT) $(WARN)
 # List corresponding compiled object files here (.o files)
 SIM_OBJ = sim_pipe.o 
 SIM_OBJ_FP = sim_pipe_fp.o 
-SP_REG = sp_register.o
+SP_REG = lib/sp_register.o
 
 TESTCASES = testcase1 testcase2 testcase3 testcase4 testcase5 testcase6 testcase_fp0 testcase_fp1 testcase_fp2 testcase_fp3 testcase_fp4 testcase_fp5
  
@@ -25,22 +25,22 @@ testcase:
 
 # rules for making testcases
 testcase1: .cc.o testcase 
-	$(CC) -o bin/testcase1 $(CFLAGS) $(SIM_OBJ) testcases/testcase1.o
+	$(CC) -o bin/testcase1 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase1.o
 
 testcase2: .cc.o testcase
-	$(CC) -o bin/testcase2 $(CFLAGS) $(SIM_OBJ) testcases/testcase2.o
+	$(CC) -o bin/testcase2 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase2.o
 
 testcase3: .cc.o testcase 
-	$(CC) -o bin/testcase3 $(CFLAGS) $(SIM_OBJ) testcases/testcase3.o
+	$(CC) -o bin/testcase3 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase3.o
 
 testcase4: .cc.o testcase
-	$(CC) -o bin/testcase4 $(CFLAGS) $(SIM_OBJ) testcases/testcase4.o
+	$(CC) -o bin/testcase4 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase4.o
 
 testcase5: .cc.o testcase 
-	$(CC) -o bin/testcase5 $(CFLAGS) $(SIM_OBJ) testcases/testcase5.o
+	$(CC) -o bin/testcase5 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase5.o
 
 testcase6: .cc.o testcase
-	$(CC) -o bin/testcase6 $(CFLAGS) $(SIM_OBJ) testcases/testcase6.o
+	$(CC) -o bin/testcase6 $(CFLAGS) $(SIM_OBJ) $(SP_REG) testcases/testcase6.o
 
 testcase_fp0: .cc.o testcase 
 	$(CC) -o bin/testcase_fp0 $(CFLAGS) $(SIM_OBJ_FP) testcases/testcase_fp0.o
